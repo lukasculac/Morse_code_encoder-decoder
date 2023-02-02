@@ -13,7 +13,8 @@
 
 static char word_to_code[32];
 static char morse_to_decode[128];
-
+static char decoded_morse[32] = {""};
+static char coded_word[128] = {""};
 
 //Storage for data
 static const char* CHAR_TO_MORSE[128] = {
@@ -92,13 +93,13 @@ const char* morse_to_char (const char* str)
         return MORSE_TO_CHAR[morse_to_index(str)];
 }
 
-const void decode_morse_code(const char* morse){
-    char decoded_morse[128] = {""};
+void decode_morse_code(const char* morse){
+    
     char temp[8] = {""};
     
-    for (unsigned int i = 0; i < strlen(morse_to_decode) - 1; i++){
+    for (unsigned int i = 0; i < strlen(morse) - 1; i++){
         
-        if(morse_to_decode[i] == ' '){
+        if(morse[i] == ' '){
             
             strcat(decoded_morse, morse_to_char(temp));
             temp[0] = 0;
@@ -106,28 +107,29 @@ const void decode_morse_code(const char* morse){
             continue;         
             } 
 
-        else if(morse_to_decode[i] == '/'){
+        else if(morse[i] == '/'){
             strcat(decoded_morse, morse_to_char(temp));
             strcat(decoded_morse, " ");
             temp[0] = 0;
             continue;
         }
 
-        strncat(temp, &morse_to_decode[i], 1);
+        strncat(temp, &morse[i], 1);
     }
     strcat(decoded_morse, morse_to_char(temp));
     printf("Your morse code says:\n%s", decoded_morse);
 }
 
-const void code_string_input(const char* str){
-    char coded_word[128] = {""};
+void code_string_input(const char* str){
     
-    for (int i = 0; i < strlen(word_to_code) - 1; i++){
-        if (word_to_code[i] == ' '){
-            strcat(coded_word,"|");
+    
+    for (unsigned int i = 0; i < strlen(str) - 1; i++){
+        if (str[i] == ' '){
+            coded_word[strlen(coded_word)-1] = '\0'; 
+            strcat(coded_word,"/");
             continue;
         }
-        strcat(coded_word, char_to_morse(word_to_code[i]));
+        strcat(coded_word, char_to_morse(str[i]));
         strcat(coded_word," ");
     }
     printf("Your string in morse code is:\n%s\n", coded_word);
