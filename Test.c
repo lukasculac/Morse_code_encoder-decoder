@@ -92,36 +92,8 @@ const char* morse_to_char (const char* str)
         return MORSE_TO_CHAR[morse_to_index(str)];
 }
 
-
-
-
-int main() {  
-
-    
-    //coding a word to morse part
-    printf("Enter a string: "); 
-    fflush(stdin);
-    fgets(word_to_code, sizeof(word_to_code), stdin);
-     
-    char coded_word[128] = {""};
-    
-    for (int i = 0; i < strlen(word_to_code) - 1; i++){
-        if (word_to_code[i] == ' '){
-            strcat(coded_word,"|");
-            continue;
-        }
-        strcat(coded_word, char_to_morse(word_to_code[i]));
-        strcat(coded_word," ");
-    }
-    printf("Your string in morse code is:\n%s\n", coded_word);
-    
-    
-    //decoding morse code part
+const void decode_morse_code(const char* morse){
     char decoded_morse[128] = {""};
-    printf("Enter a morse code: "); 
-    fflush(stdin);
-    fgets(morse_to_decode, sizeof(morse_to_decode), stdin);
-    
     char temp[8] = {""};
     
     for (unsigned int i = 0; i < strlen(morse_to_decode) - 1; i++){
@@ -145,6 +117,35 @@ int main() {
     }
     strcat(decoded_morse, morse_to_char(temp));
     printf("Your morse code says:\n%s", decoded_morse);
+}
+
+const void code_string_input(const char* str){
+    char coded_word[128] = {""};
+    
+    for (int i = 0; i < strlen(word_to_code) - 1; i++){
+        if (word_to_code[i] == ' '){
+            strcat(coded_word,"|");
+            continue;
+        }
+        strcat(coded_word, char_to_morse(word_to_code[i]));
+        strcat(coded_word," ");
+    }
+    printf("Your string in morse code is:\n%s\n", coded_word);
+}
+
+
+int main() {  
+    //coding a word to morse part
+    printf("Enter a string: "); 
+    fflush(stdin);
+    fgets(word_to_code, sizeof(word_to_code), stdin);
+    code_string_input(word_to_code);
+    
+    //decoding morse code part
+    printf("Enter a morse code: "); 
+    fflush(stdin);
+    fgets(morse_to_decode, sizeof(morse_to_decode), stdin);
+    decode_morse_code(morse_to_decode);
     
     return 0;
 }
