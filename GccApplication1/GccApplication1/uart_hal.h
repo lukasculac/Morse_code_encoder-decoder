@@ -30,7 +30,7 @@ SOFTWARE.
 #include <avr/io.h>
 #include <stdlib.h>
 
-#define RX_BUFFER_SIZE 128
+#define RX_BUFFER_SIZE 16
 
 void uart_init(uint32_t baud,uint8_t high_speed);
 void uart_send_byte(uint8_t c);
