@@ -18,6 +18,7 @@ static char word_to_code[32];
 static char morse_to_decode[128];
 static char decoded_morse[32] = {""};
 static char coded_word[128] = {""};
+static uint16_t rxc_write_pos = 0;
 
 //Storage for data
 static const char* CHAR_TO_MORSE[128] = {
@@ -80,27 +81,18 @@ ISR(INT1_vect){
 }
 
 ISR(USARTRXC_vect){
-	PORTA &= 0xfe;
-	volatile static uint16_t rxc_write_pos = 0;
 	
 	rx_buffer[rxc_write_pos] = UDR;
-	if(rx_buffer[rxc_write_pos] == 'A'){
-		DDRB |= _BV(0);
-		_delay_ms(300);
-		DDRB &= ~_BV(0);
-		_delay_ms(100);
-		DDRB |= _BV(0);
-		_delay_ms(100);
-		DDRB &= ~_BV(0);
-		_delay_ms(100);
-		DDRB |= _BV(0);
-		_delay_ms(300);
-		DDRB &= ~_BV(0);
+	if(rx_buffer[rxc_write_pos] == '0'){
+		code_string_input(rx_buffer);
+		rxc_write_pos = 0;
+		memset(rx_buffer, 0, sizeof rx_buffer);
+		return;
 	}
-	lcd_clrscr();
-	lcd_data(rx_buffer[rxc_write_pos]);
 	
-	rx_count++;
+	/*lcd_clrscr();
+	lcd_data(rx_buffer[rxc_write_pos]);*/
+	
 	rxc_write_pos++;
 	if(rxc_write_pos >= RX_BUFFER_SIZE){
 		rxc_write_pos = 0;
@@ -139,6 +131,75 @@ const char* char_to_morse (char c)
 	return CHAR_TO_MORSE[(int) c];
 }
 
+const char* morse_to_char (const char* str)
+{
+	
+	return MORSE_TO_CHAR[morse_to_index(str)];
+}
+
+void buzz_light(const char* str){
+	for(int i = 0; i < strlen(str); i++){
+		if(str[i] == '.'){
+			DDRB |= _BV(3);
+			PORTA &= 0xfe;
+			_delay_ms(100);
+			DDRB &= ~_BV(3);
+			PORTA |= 0xff;
+			_delay_ms(100);
+		}
+		else if(str[i] == '-'){
+			DDRB |= _BV(3);
+			PORTA &= 0xfe;
+			_delay_ms(300);
+			DDRB &= ~_BV(3);
+			PORTA |= 0xff;
+			_delay_ms(100);
+		}
+		else if(str[i] == ' '){
+			_delay_ms(200);
+		}
+		else if(str[i] == '/'){
+			_delay_ms(500);
+		}
+	}
+}
+
+void code_string_input(const char* str){
+
+	memset(coded_word, 0, sizeof coded_word);
+	
+	for (unsigned int i = 0; i < strlen(str) - 1; i++){
+		if (str[i] == ' '){
+			coded_word[strlen(coded_word)-1] = '\0';
+			strcat(coded_word,"/");
+			continue;
+		}
+		strcat(coded_word, char_to_morse(str[i]));
+		strcat(coded_word," ");
+	}
+	lcd_clrscr();
+	lcd_puts(str);
+	buzz_light(coded_word);
+	
+	/*
+	
+	lcd_gotoxy(0, 0);
+	if(strlen(coded_word) > 16){
+		for(int i = 0; i < 16; i++){
+			
+			lcd_putc(coded_word[i]);
+		}
+		lcd_gotoxy(0, 1);
+		for(int i = 16; i < strlen(coded_word); i++){
+			lcd_putc(coded_word[i]);
+		}
+	}
+	else{
+		lcd_puts(coded_word);
+	}*/
+	
+}
+
 int main(void)
 {
 	//LCD display 
@@ -153,7 +214,7 @@ int main(void)
 	lcd_clrscr();
 	 
  	DDRA = 0xff;
-    PORTA = 0xff;
+   	PORTA = 0xff;
 	
 	MCUCR = _BV(ISC11) | _BV(ISC01);
 	GICR = _BV(INT0) | _BV(INT1);
