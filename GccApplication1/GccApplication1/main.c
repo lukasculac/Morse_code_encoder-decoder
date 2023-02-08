@@ -6,18 +6,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdbool.h>
 #include "lcd.h"
 #include "uart_hal.h"
 
-
-volatile static uint8_t rx_buffer[RX_BUFFER_SIZE] = {0};
-volatile static uint16_t rx_count = 0;
-
-
-static char word_to_code[32];
-static char morse_to_decode[128];
-static char decoded_morse[32] = {""};
-static char coded_word[128] = {""};
+static char rx_buffer[RX_BUFFER_SIZE] = {0};
+static char morse_buffer[RX_BUFFER_SIZE] = {0};
+static bool mode_flag = false;
 static uint16_t rxc_write_pos = 0;
 
 //Storage for data
@@ -59,89 +54,22 @@ static const char* MORSE_TO_CHAR[128] = {
 	NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
 };
 
-void debounce() {
-	_delay_ms(100);
-	GIFR = _BV(INTF0) | _BV(INTF1);
-}
-
-ISR(INT0_vect){
+//Buzzer controls
+void sound_on(void){
 	DDRB |= _BV(3);
-	
-	while(!(PIND & _BV(PD2))){
-		PORTA &= ~_BV(1);
-	}
-	PORTA |= _BV(1);
-	
-	debounce();
 }
 
-ISR(INT1_vect){
-	
-	debounce();
+void sound_off(void){
+	DDRB &= ~_BV(3);
 }
 
-ISR(USARTRXC_vect){
-	
-	rx_buffer[rxc_write_pos] = UDR;
-	if(rx_buffer[rxc_write_pos] == '0'){
-		code_string_input(rx_buffer);
-		rxc_write_pos = 0;
-		memset(rx_buffer, 0, sizeof rx_buffer);
-		return;
-	}
-	
-	/*lcd_clrscr();
-	lcd_data(rx_buffer[rxc_write_pos]);*/
-	
-	rxc_write_pos++;
-	if(rxc_write_pos >= RX_BUFFER_SIZE){
-		rxc_write_pos = 0;
-	}
-	
-}
-
-//Indexing morse code
-int morse_to_index (const char* str)
-{
-	unsigned char sum = 0, bit;
-	//printf("%s", str);
-	for (bit = 1; bit; bit <<= 1) {
-		switch (*str++) {
-			case 0:
-			return sum | bit;
-			default:
-			return 0;
-			case '-':
-			sum |= bit;
-			/* FALLTHROUGH */
-			case '.':
-			break;
-		}
-	}
-	
-	return 0;
-}
-
-//Functions for coding and decoding morse code
-const char* char_to_morse (char c)
-{
-	if (islower(c))
-	c += ('A' - 'a');
-
-	return CHAR_TO_MORSE[(int) c];
-}
-
-const char* morse_to_char (const char* str)
-{
-	
-	return MORSE_TO_CHAR[morse_to_index(str)];
-}
-
+//Turn dots and dashes into light and sound signals
 void buzz_light(const char* str){
 	for(int i = 0; i < strlen(str); i++){
+
 		if(str[i] == '.'){
 			DDRB |= _BV(3);
-			PORTA &= 0xfe;
+			PORTA &= 0x00;
 			_delay_ms(100);
 			DDRB &= ~_BV(3);
 			PORTA |= 0xff;
@@ -149,7 +77,7 @@ void buzz_light(const char* str){
 		}
 		else if(str[i] == '-'){
 			DDRB |= _BV(3);
-			PORTA &= 0xfe;
+			PORTA &= 0x00;
 			_delay_ms(300);
 			DDRB &= ~_BV(3);
 			PORTA |= 0xff;
@@ -164,10 +92,44 @@ void buzz_light(const char* str){
 	}
 }
 
-void code_string_input(const char* str){
+//Indexing morse code
+int morse_to_index (const char* str)
+{
+	char sum = 0;
+	uint8_t bit;
+	//printf("%s", str);
+	for (bit = 1; bit; bit <<= 1) {
+		switch (*str++) {
+			case 0:
+				return sum | bit;
+			default:
+				return 0;
+			case '-':
+				sum |= bit;
+			case '.':
+				break;
+		}
+	}
+	return 0;
+}
 
-	memset(coded_word, 0, sizeof coded_word);
-	
+//Functions for coding and decoding morse code
+const char* morse_to_char (const char* str)
+{
+	return MORSE_TO_CHAR[morse_to_index(str)];
+}
+
+const char* char_to_morse (char c)
+{
+	if (islower(c))
+	c += ('A' - 'a');
+
+	return CHAR_TO_MORSE[(int) c];
+}
+
+
+void code_string_input(const char* str){
+	char coded_word[128] = {""};
 	for (unsigned int i = 0; i < strlen(str) - 1; i++){
 		if (str[i] == ' '){
 			coded_word[strlen(coded_word)-1] = '\0';
@@ -178,33 +140,66 @@ void code_string_input(const char* str){
 		strcat(coded_word," ");
 	}
 	lcd_clrscr();
-	lcd_puts(str);
+	
 	buzz_light(coded_word);
-	
-	/*
-	
-	lcd_gotoxy(0, 0);
-	if(strlen(coded_word) > 16){
-		for(int i = 0; i < 16; i++){
-			
-			lcd_putc(coded_word[i]);
+}
+
+void decode_morse_code(const char* morse, uint8_t j){
+	lcd_gotoxy(j,1);
+	lcd_puts(morse_to_char(morse));
+	for(int i = 0; i < 16; i++){
+		lcd_gotoxy(i,0);
+		lcd_puts(" ");
+	}
+	lcd_home();
+}
+
+void debounce() {
+	_delay_ms(100);
+	GIFR = _BV(INTF0) | _BV(INTF1);
+}
+//interrupts
+ISR(INT0_vect){
+	if(mode_flag == false){
+		mode_flag = true;
+		PORTA = 0x00;
+		lcd_clrscr();
+		}else if (mode_flag == true){
+		mode_flag = false;
+		PORTA = 0xff;
+		lcd_clrscr();
+	}
+	debounce();
+}
+
+ISR(USARTRXC_vect){
+	if(mode_flag == false){
+		rx_buffer[rxc_write_pos] = UDR;
+		
+		if(rx_buffer[rxc_write_pos] == '0'){
+			lcd_puts(rx_buffer);
+			code_string_input(rx_buffer);
+			rxc_write_pos = 0;
+			memset(rx_buffer, 0, sizeof(rx_buffer));
+			return;
 		}
-		lcd_gotoxy(0, 1);
-		for(int i = 16; i < strlen(coded_word); i++){
-			lcd_putc(coded_word[i]);
+		rxc_write_pos++;
+		if(rxc_write_pos >= RX_BUFFER_SIZE){
+			rxc_write_pos = 0;
 		}
 	}
-	else{
-		lcd_puts(coded_word);
-	}*/
-	
 }
 
 int main(void)
 {
+	int8_t j = 0;
+	int8_t new_word = 1;
+	uint16_t dot_counter = 0;
+	uint16_t space_counter = 0;
+	
 	//LCD display 
 	DDRD = _BV(4);
-	 
+	DDRB |= _BV(0) | _BV(1);
 	 
 	TCCR1A = _BV(COM1B1) | _BV(WGM10);
 	TCCR1B = _BV(WGM12) | _BV(CS11);
@@ -214,19 +209,69 @@ int main(void)
 	lcd_clrscr();
 	 
  	DDRA = 0xff;
-   	PORTA = 0xff;
+    PORTA = 0xff;
 	
 	MCUCR = _BV(ISC11) | _BV(ISC01);
-	GICR = _BV(INT0) | _BV(INT1);
+	GICR = _BV(INT0);
 	
 	//uart initialization
 	uart_init(9600, 0);
-
+	
 	sei();
+	
+	_delay_ms(100);
 	
     while (1) 
     {
-		DDRB &= ~_BV(3);
+		
+		if(mode_flag == true){
+			
+			while(!(PINB & _BV(PB0))){
+				space_counter++;
+				_delay_ms(10);
+				
+				if(space_counter > 100 && morse_buffer[0] != '\0'){
+					decode_morse_code(morse_buffer, j);
+					memset(morse_buffer, 0, sizeof(morse_buffer));
+					space_counter = 0;
+					new_word = 0;
+					j++;
+				}
+				else if(space_counter > 300 && new_word == 0){
+					lcd_gotoxy(j,1);
+					lcd_puts("_");
+					space_counter = 0;
+					new_word = 1;
+					lcd_home();
+					j++;
+				}
+				else if(space_counter > 1000){
+					lcd_clrscr();
+					j = 0;
+					space_counter = 0;
+					new_word = 1;
+				}
+			}
+			
+			//dok je pritisnut
+			while(!(PINB & _BV(PB1))){
+				space_counter = 0;
+				sound_on();
+				dot_counter++;
+				_delay_ms(10);
+			}
+			sound_off();
+			if(dot_counter < 24){
+				strcat(morse_buffer,".");
+				lcd_puts(".");
+			}
+			else if(dot_counter >= 24){
+				strcat(morse_buffer,"-");
+				lcd_puts("-");
+			}
+			
+			dot_counter = 0;
+		}
 	}
 }
 
