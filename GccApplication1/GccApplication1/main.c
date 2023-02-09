@@ -7,6 +7,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdbool.h>
+
 #include "lcd.h"
 #include "uart_hal.h"
 
@@ -63,24 +64,35 @@ void sound_off(void){
 	DDRB &= ~_BV(3);
 }
 
+//Light controls
+void lights_on(void){
+	PORTA &= 0x00;
+}
+
+void lights_off(void){
+	PORTA |= 0xff;
+}
+
 //Turn dots and dashes into light and sound signals
 void buzz_light(const char* str){
 	for(int i = 0; i < strlen(str); i++){
 
 		if(str[i] == '.'){
-			DDRB |= _BV(3);
-			PORTA &= 0x00;
+			sound_on();
+			lights_on();
 			_delay_ms(100);
-			DDRB &= ~_BV(3);
-			PORTA |= 0xff;
+			
+			sound_off();
+			lights_off();
 			_delay_ms(100);
 		}
 		else if(str[i] == '-'){
-			DDRB |= _BV(3);
-			PORTA &= 0x00;
+			sound_on();
+			lights_on();
 			_delay_ms(300);
-			DDRB &= ~_BV(3);
-			PORTA |= 0xff;
+			
+			sound_off();
+			lights_off();
 			_delay_ms(100);
 		}
 		else if(str[i] == ' '){
@@ -97,7 +109,7 @@ int morse_to_index (const char* str)
 {
 	char sum = 0;
 	uint8_t bit;
-	//printf("%s", str);
+
 	for (bit = 1; bit; bit <<= 1) {
 		switch (*str++) {
 			case 0:
@@ -158,15 +170,17 @@ void debounce() {
 	_delay_ms(100);
 	GIFR = _BV(INTF0) | _BV(INTF1);
 }
+
 //interrupts
 ISR(INT0_vect){
 	if(mode_flag == false){
 		mode_flag = true;
-		PORTA = 0x00;
+		lights_on();
 		lcd_clrscr();
-		}else if (mode_flag == true){
+	}
+	else if (mode_flag == true){
 		mode_flag = false;
-		PORTA = 0xff;
+		lights_off();
 		lcd_clrscr();
 	}
 	debounce();
@@ -177,7 +191,6 @@ ISR(USARTRXC_vect){
 		rx_buffer[rxc_write_pos] = UDR;
 		
 		if(rx_buffer[rxc_write_pos] == '0'){
-			lcd_puts(rx_buffer);
 			code_string_input(rx_buffer);
 			rxc_write_pos = 0;
 			memset(rx_buffer, 0, sizeof(rx_buffer));
@@ -207,11 +220,12 @@ int main(void)
 
 	lcd_init(LCD_DISP_ON);
 	lcd_clrscr();
-	 
- 	DDRA = 0xff;
-    PORTA = 0xff;
 	
-	MCUCR = _BV(ISC11) | _BV(ISC01);
+ 	DDRA = 0xff;
+    	PORTA = 0xff;
+	
+	//INT0 initialization
+	MCUCR = _BV(ISC01);
 	GICR = _BV(INT0);
 	
 	//uart initialization
@@ -221,11 +235,12 @@ int main(void)
 	
 	_delay_ms(100);
 	
-    while (1) 
-    {
+        while (1) 
+        {
 		
 		if(mode_flag == true){
 			
+			//dok nije pritisnut
 			while(!(PINB & _BV(PB0))){
 				space_counter++;
 				_delay_ms(10);
@@ -272,6 +287,6 @@ int main(void)
 			
 			dot_counter = 0;
 		}
-	}
+        }
 }
 
