@@ -225,7 +225,7 @@ int main(void)
     	PORTA = 0xff;
 	
 	//INT0 initialization
-	MCUCR = _BV(ISC01);
+	MCUCR = _BV(ISC11) | _BV(ISC01);
 	GICR = _BV(INT0);
 	
 	//uart initialization
