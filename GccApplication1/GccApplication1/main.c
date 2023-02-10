@@ -11,9 +11,12 @@
 #include "lcd.h"
 #include "uart_hal.h"
 
+#define BUTTON_NOT_PRESSED !(PINB & _BV(PB0))
+#define BUTTON_PRESSED !(PINB & _BV(PB1))
+
 static char rx_buffer[RX_BUFFER_SIZE] = {0};
 static char morse_buffer[RX_BUFFER_SIZE] = {0};
-static bool mode_flag = false;
+static bool decoding = false;
 static uint16_t rxc_write_pos = 0;
 
 //Storage for data
@@ -113,13 +116,13 @@ int morse_to_index (const char* str)
 	for (bit = 1; bit; bit <<= 1) {
 		switch (*str++) {
 			case 0:
-				return sum | bit;
+			return sum | bit;
 			default:
-				return 0;
+			return 0;
 			case '-':
-				sum |= bit;
+			sum |= bit;
 			case '.':
-				break;
+			break;
 		}
 	}
 	return 0;
@@ -145,6 +148,7 @@ void code_string_input(const char* str){
 	for (unsigned int i = 0; i < strlen(str) - 1; i++){
 		if (str[i] == ' '){
 			coded_word[strlen(coded_word)-1] = '\0';
+			lcd_puts("T");
 			strcat(coded_word,"/");
 			continue;
 		}
@@ -156,8 +160,8 @@ void code_string_input(const char* str){
 	buzz_light(coded_word);
 }
 
-void decode_morse_code(const char* morse, uint8_t lcd_index){
-	lcd_gotoxy(lcd_index,1);
+void decode_morse_code(const char* morse, uint8_t j){
+	lcd_gotoxy(j,1);
 	lcd_puts(morse_to_char(morse));
 	for(int i = 0; i < 16; i++){
 		lcd_gotoxy(i,0);
@@ -167,19 +171,19 @@ void decode_morse_code(const char* morse, uint8_t lcd_index){
 }
 
 void debounce() {
-	_delay_ms(100);
-	GIFR = _BV(INTF0);
+	_delay_ms(300);
+	GIFR = _BV(INTF0) | _BV(INTF1);
 }
 
 //interrupts
 ISR(INT0_vect){
-	if(mode_flag == false){
-		mode_flag = true;
+	if(!decoding){
+		decoding = true;
 		lights_on();
 		lcd_clrscr();
 	}
-	else if (mode_flag == true){
-		mode_flag = false;
+	else if (decoding){
+		decoding = false;
 		lights_off();
 		lcd_clrscr();
 	}
@@ -187,7 +191,7 @@ ISR(INT0_vect){
 }
 
 ISR(USARTRXC_vect){
-	if(mode_flag == false){
+	if(!decoding){
 		rx_buffer[rxc_write_pos] = UDR;
 		
 		if(rx_buffer[rxc_write_pos] == '0'){
@@ -203,17 +207,52 @@ ISR(USARTRXC_vect){
 	}
 }
 
+void morse_2_letter(int8_t *lcd_index,uint16_t *space_counter,bool *new_word){
+	decode_morse_code(morse_buffer, *lcd_index);
+	memset(morse_buffer, 0, sizeof(morse_buffer));
+	*space_counter = 0;
+	*new_word = false;
+	(*lcd_index)++;
+}
+
+void space_words(int8_t *lcd_index,uint16_t *space_counter,bool *new_word){
+	lcd_gotoxy(*lcd_index,1);
+	lcd_puts("_");
+	*space_counter = 0;
+	*new_word = true;
+	lcd_home();
+	(*lcd_index)++;
+}
+
+void clear_lcd(int8_t *lcd_index,uint16_t *space_counter,bool *new_word){
+	lcd_clrscr();
+	*lcd_index = 0;
+	*space_counter = 0;
+	*new_word = true;
+}
+
+void dot_or_dash(uint16_t *dot_counter){
+	if(*dot_counter < 24){
+		strcat(morse_buffer,".");
+		lcd_puts(".");
+	}
+	else if(*dot_counter >= 24){
+		strcat(morse_buffer,"-");
+		lcd_puts("-");
+	}
+}
+
 int main(void)
 {
 	int8_t lcd_index = 0;
-	int8_t new_word = 1;
-	uint16_t dot_counter = 0;
-	uint16_t space_counter = 0;
+	bool new_word = true;
+	uint16_t button_pressed_time = 0;
+	uint16_t button_released_time = 0;
 	
-	//LCD display 
+	//LCD display
 	DDRD = _BV(4);
 	DDRB |= _BV(0) | _BV(1);
-	 
+	
 	TCCR1A = _BV(COM1B1) | _BV(WGM10);
 	TCCR1B = _BV(WGM12) | _BV(CS11);
 	OCR1B = 1;
@@ -221,8 +260,8 @@ int main(void)
 	lcd_init(LCD_DISP_ON);
 	lcd_clrscr();
 	
- 	DDRA = 0xff;
-    	PORTA = 0xff;
+	DDRA = 0xff;
+	PORTA = 0xff;
 	
 	//INT0 initialization
 	MCUCR = _BV(ISC11) | _BV(ISC01);
@@ -233,58 +272,40 @@ int main(void)
 	
 	sei();
 	
-        while (1) 
-        {
-		
-		if(mode_flag == true){
-			
+	while (1)
+	{
+		if(decoding){
 			//dok nije pritisnut
-			while(!(PINB & _BV(PB0))){
-				space_counter++;
+			while(BUTTON_NOT_PRESSED){
+				button_released_time++;
 				_delay_ms(10);
 				
-				if(space_counter > 100 && morse_buffer[0] != '\0'){
-					decode_morse_code(morse_buffer, lcd_index);
-					memset(morse_buffer, 0, sizeof(morse_buffer));
-					space_counter = 0;
-					new_word = 0;
-					lcd_index++;
+				if(button_released_time > 100 && morse_buffer[0] != '\0'){
+					morse_2_letter(&lcd_index, &button_released_time, &new_word);
+					
 				}
-				else if(space_counter > 300 && new_word == 0){
-					lcd_gotoxy(lcd_index,1);
-					lcd_puts("_");
-					space_counter = 0;
-					new_word = 1;
-					lcd_home();
-					lcd_index++;
+				else if(button_released_time > 300 && !new_word){
+					space_words(&lcd_index, &button_released_time, &new_word);
+					
 				}
-				else if(space_counter > 1000){
-					lcd_clrscr();
-					lcd_index = 0;
-					space_counter = 0;
-					new_word = 1;
+				else if(button_released_time > 1000){
+					clear_lcd(&lcd_index, &button_released_time, &new_word);
+
 				}
 			}
 			
 			//dok je pritisnut
-			while(!(PINB & _BV(PB1))){
-				space_counter = 0;
+			while(BUTTON_PRESSED){
+				button_released_time = 0;
 				sound_on();
-				dot_counter++;
+				button_pressed_time++;
 				_delay_ms(10);
 			}
-			sound_off();
-			if(dot_counter < 24){
-				strcat(morse_buffer,".");
-				lcd_puts(".");
-			}
-			else if(dot_counter >= 24){
-				strcat(morse_buffer,"-");
-				lcd_puts("-");
-			}
-			
-			dot_counter = 0;
-		}
-        }
-}
 
+			sound_off();
+			dot_or_dash(&button_pressed_time);
+
+			button_pressed_time = 0;
+		}
+	}
+}
