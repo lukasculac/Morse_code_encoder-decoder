@@ -168,7 +168,7 @@ void decode_morse_code(const char* morse, uint8_t j){
 
 void debounce() {
 	_delay_ms(100);
-	GIFR = _BV(INTF0) | _BV(INTF1);
+	GIFR = _BV(INTF0);
 }
 
 //interrupts
@@ -232,8 +232,6 @@ int main(void)
 	uart_init(9600, 0);
 	
 	sei();
-	
-	_delay_ms(100);
 	
         while (1) 
         {
