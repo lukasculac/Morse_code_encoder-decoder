@@ -156,8 +156,8 @@ void code_string_input(const char* str){
 	buzz_light(coded_word);
 }
 
-void decode_morse_code(const char* morse, uint8_t j){
-	lcd_gotoxy(j,1);
+void decode_morse_code(const char* morse, uint8_t lcd_index){
+	lcd_gotoxy(lcd_index,1);
 	lcd_puts(morse_to_char(morse));
 	for(int i = 0; i < 16; i++){
 		lcd_gotoxy(i,0);
@@ -205,7 +205,7 @@ ISR(USARTRXC_vect){
 
 int main(void)
 {
-	int8_t j = 0;
+	int8_t lcd_index = 0;
 	int8_t new_word = 1;
 	uint16_t dot_counter = 0;
 	uint16_t space_counter = 0;
@@ -244,23 +244,23 @@ int main(void)
 				_delay_ms(10);
 				
 				if(space_counter > 100 && morse_buffer[0] != '\0'){
-					decode_morse_code(morse_buffer, j);
+					decode_morse_code(morse_buffer, lcd_index);
 					memset(morse_buffer, 0, sizeof(morse_buffer));
 					space_counter = 0;
 					new_word = 0;
-					j++;
+					lcd_index++;
 				}
 				else if(space_counter > 300 && new_word == 0){
-					lcd_gotoxy(j,1);
+					lcd_gotoxy(lcd_index,1);
 					lcd_puts("_");
 					space_counter = 0;
 					new_word = 1;
 					lcd_home();
-					j++;
+					lcd_index++;
 				}
 				else if(space_counter > 1000){
 					lcd_clrscr();
-					j = 0;
+					lcd_index = 0;
 					space_counter = 0;
 					new_word = 1;
 				}
