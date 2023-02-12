@@ -18,6 +18,7 @@ static char rx_buffer[RX_BUFFER_SIZE] = {0};
 static char morse_buffer[RX_BUFFER_SIZE] = {0};
 static bool decoding = false;
 static uint16_t rxc_write_pos = 0;
+static int8_t lcd_index = 0;
 
 //Storage for data
 static const char* CHAR_TO_MORSE[128] = {
@@ -175,25 +176,37 @@ void debounce() {
 	GIFR = _BV(INTF0) | _BV(INTF1);
 }
 
-//interrupts
-ISR(INT0_vect){
+void switch_mode(void){
 	if(!decoding){
 		decoding = true;
 		lights_on();
 		lcd_clrscr();
+		lcd_index = 0;
 	}
 	else if (decoding){
 		decoding = false;
 		lights_off();
 		lcd_clrscr();
 	}
+}
+
+//interrupts
+ISR(INT0_vect){
+	switch_mode();
 	debounce();
 }
 
 ISR(USARTRXC_vect){
+	rx_buffer[rxc_write_pos] = UDR;
+	
+	if(rx_buffer[rxc_write_pos] == '+'){
+		switch_mode();
+		rxc_write_pos = 0;
+		memset(rx_buffer, 0, sizeof(rx_buffer));
+		return;
+	}
+	
 	if(!decoding){
-		rx_buffer[rxc_write_pos] = UDR;
-		
 		if(rx_buffer[rxc_write_pos] == '0'){
 			code_string_input(rx_buffer);
 			rxc_write_pos = 0;
@@ -207,26 +220,26 @@ ISR(USARTRXC_vect){
 	}
 }
 
-void morse_2_letter(int8_t *lcd_index,uint16_t *space_counter,bool *new_word){
-	decode_morse_code(morse_buffer, *lcd_index);
+void morse_2_letter(uint16_t *space_counter,bool *new_word){
+	decode_morse_code(morse_buffer, lcd_index);
 	memset(morse_buffer, 0, sizeof(morse_buffer));
 	*space_counter = 0;
 	*new_word = false;
-	(*lcd_index)++;
+	lcd_index++;
 }
 
-void space_words(int8_t *lcd_index,uint16_t *space_counter,bool *new_word){
-	lcd_gotoxy(*lcd_index,1);
+void space_words(uint16_t *space_counter,bool *new_word){
+	lcd_gotoxy(lcd_index,1);
 	lcd_puts("_");
 	*space_counter = 0;
 	*new_word = true;
 	lcd_home();
-	(*lcd_index)++;
+	lcd_index++;
 }
 
-void clear_lcd(int8_t *lcd_index,uint16_t *space_counter,bool *new_word){
+void clear_lcd(uint16_t *space_counter,bool *new_word){
 	lcd_clrscr();
-	*lcd_index = 0;
+	lcd_index = 0;
 	*space_counter = 0;
 	*new_word = true;
 }
@@ -244,7 +257,6 @@ void dot_or_dash(uint16_t *dot_counter){
 
 int main(void)
 {
-	int8_t lcd_index = 0;
 	bool new_word = true;
 	uint16_t button_pressed_time = 0;
 	uint16_t button_released_time = 0;
@@ -281,15 +293,15 @@ int main(void)
 				_delay_ms(10);
 				
 				if(button_released_time > 100 && morse_buffer[0] != '\0'){
-					morse_2_letter(&lcd_index, &button_released_time, &new_word);
+					morse_2_letter(&button_released_time, &new_word);
 					
 				}
 				else if(button_released_time > 300 && !new_word){
-					space_words(&lcd_index, &button_released_time, &new_word);
+					space_words(&button_released_time, &new_word);
 					
 				}
 				else if(button_released_time > 1000){
-					clear_lcd(&lcd_index, &button_released_time, &new_word);
+					clear_lcd(&button_released_time, &new_word);
 
 				}
 			}
